@@ -11,13 +11,26 @@ const selectOrden   = document.querySelector('#orden');
 const contenedorOrden = document.querySelector('#orden-contenedor');
 const tituloLenguajes = document.querySelector('#titulo-lenguajes');
 const listaLenguajes  = document.querySelector('#lenguajes');
+const botonMas   = document.querySelector('#btn-mas');
+const pie        = document.querySelector('#pie');
+
+const POR_PAGINA = 5;
 
 // Usuario buscado actualmente (ya codificado para la URL)
 let usuarioActual = null;
+// Página de repositorios que se está mostrando (empieza en 1)
+let paginaActual = 1;
 
 // 1. Petición genérica con traducción de errores HTTP
 async function obtenerJSON(url) {
     const res = await fetch(url);
+
+    // Peticiones que quedan en la hora (se lee antes de revisar errores)
+    const restantes = res.headers.get('x-ratelimit-remaining');
+    if (restantes !== null) {
+        pie.textContent = `Peticiones restantes a la API de GitHub: ${restantes}`;
+    }
+
     if (res.status === 404) throw new Error('Usuario no encontrado');
     if (res.status === 403) {
         throw new Error('Límite de peticiones alcanzado');
@@ -52,8 +65,9 @@ function mostrarPerfil(u) {
 }
 
 // 3. Pintar la lista de repositorios
-function mostrarRepos(lista) {
-    repos.innerHTML = '';
+function mostrarRepos(lista, anexar = false) {
+    // Si no se anexa, se reemplaza la lista; si se anexa, se conserva
+    if (!anexar) repos.innerHTML = '';
     lista.forEach(r => {
         const a = document.createElement('a');
         a.href = r.html_url;
@@ -67,6 +81,9 @@ function mostrarRepos(lista) {
     });
     titulo.classList.remove('oculto');
     contenedorOrden.classList.remove('oculto');
+
+    // Si la API devolvió menos de cinco, ya no hay más páginas
+    botonMas.classList.toggle('oculto', lista.length < POR_PAGINA);
 }
 
 // 4. Contar repositorios por lenguaje y pintar el resumen
@@ -90,11 +107,12 @@ function mostrarLenguajes(lista) {
     tituloLenguajes.classList.remove('oculto');
 }
 
-// 5. Construir la URL de los 5 repositorios con el orden elegido
-function urlRepos(usuario) {
+// 5. Construir la URL de una página de repositorios con el orden elegido
+function urlRepos(usuario, pagina = 1) {
     const params = new URLSearchParams({
         sort: selectOrden.value,
-        per_page: 5
+        per_page: POR_PAGINA,
+        page: pagina
     });
     return `${API}/users/${usuario}/repos?${params}`;
 }
@@ -105,6 +123,7 @@ function limpiarResultados() {
     titulo.classList.add('oculto');
     tituloLenguajes.classList.add('oculto');
     contenedorOrden.classList.add('oculto');
+    botonMas.classList.add('oculto');
     repos.innerHTML = '';
     listaLenguajes.innerHTML = '';
 }
@@ -129,6 +148,7 @@ form.addEventListener('submit', async (e) => {
             obtenerJSON(`${API}/users/${usuario}/repos?${paramsTodos}`)
         ]);
         usuarioActual = usuario;
+        paginaActual = 1;
         mostrarPerfil(datosUsuario);
         mostrarLenguajes(todosRepos);
         mostrarRepos(datosRepos);
@@ -152,7 +172,8 @@ selectOrden.addEventListener('change', async () => {
     estado.textContent = 'Ordenando...';
 
     try {
-        const datosRepos = await obtenerJSON(urlRepos(usuarioActual));
+        paginaActual = 1;
+        const datosRepos = await obtenerJSON(urlRepos(usuarioActual, 1));
         mostrarRepos(datosRepos);
         estado.textContent = '';
     } catch (error) {
@@ -160,5 +181,27 @@ selectOrden.addEventListener('change', async () => {
         estado.textContent = error.message;
     } finally {
         selectOrden.disabled = false;
+    }
+});
+
+// 9. Botón "Cargar más": trae la siguiente página y la añade a la lista
+botonMas.addEventListener('click', async () => {
+    if (!usuarioActual) return;
+
+    botonMas.disabled = true;
+    estado.className = '';
+    estado.textContent = 'Cargando más...';
+
+    try {
+        const siguiente = paginaActual + 1;
+        const datosRepos = await obtenerJSON(urlRepos(usuarioActual, siguiente));
+        paginaActual = siguiente;
+        mostrarRepos(datosRepos, true);   // true = no borrar los anteriores
+        estado.textContent = '';
+    } catch (error) {
+        estado.className = 'error';
+        estado.textContent = error.message;
+    } finally {
+        botonMas.disabled = false;
     }
 });
