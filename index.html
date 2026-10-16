@@ -10,6 +10,7 @@
         .perfil img { width: 96px; border-radius: 50%; }
         .error  { color: crimson; }
         .oculto { display: none; }
+        .orden  { margin-top: 1rem; }
     </style>
 </head>
 <body>
@@ -21,7 +22,19 @@
     <p id="estado"></p>
 
     <section id="perfil" class="perfil oculto"></section>
+
+    <h2 id="titulo-lenguajes" class="oculto">Lenguajes más usados</h2>
+    <ul id="lenguajes"></ul>
+
     <h2 id="titulo-repos" class="oculto">Repositorios recientes</h2>
+    <div id="orden-contenedor" class="orden oculto">
+        <label for="orden">Ordenar por:</label>
+        <select id="orden">
+            <option value="updated">Última actualización (updated)</option>
+            <option value="created">Fecha de creación (created)</option>
+            <option value="full_name">Nombre (full_name)</option>
+        </select>
+    </div>
     <ul id="repos"></ul>
 
     <script src="app.js"></script>

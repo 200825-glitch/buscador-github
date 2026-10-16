@@ -1,12 +1,19 @@
 const API = 'https://api.github.com';
 
-const form   = document.querySelector('#form-buscar');
-const input  = document.querySelector('#input-usuario');
-const boton  = document.querySelector('#btn-buscar');
-const estado = document.querySelector('#estado');
-const perfil = document.querySelector('#perfil');
-const titulo = document.querySelector('#titulo-repos');
-const repos  = document.querySelector('#repos');
+const form       = document.querySelector('#form-buscar');
+const input      = document.querySelector('#input-usuario');
+const boton      = document.querySelector('#btn-buscar');
+const estado     = document.querySelector('#estado');
+const perfil     = document.querySelector('#perfil');
+const titulo     = document.querySelector('#titulo-repos');
+const repos      = document.querySelector('#repos');
+const selectOrden   = document.querySelector('#orden');
+const contenedorOrden = document.querySelector('#orden-contenedor');
+const tituloLenguajes = document.querySelector('#titulo-lenguajes');
+const listaLenguajes  = document.querySelector('#lenguajes');
+
+// Usuario buscado actualmente (ya codificado para la URL)
+let usuarioActual = null;
 
 // 1. Petición genérica con traducción de errores HTTP
 async function obtenerJSON(url) {
@@ -59,34 +66,99 @@ function mostrarRepos(lista) {
         repos.append(li);
     });
     titulo.classList.remove('oculto');
+    contenedorOrden.classList.remove('oculto');
 }
 
-// 4. Evento submit: dos peticiones en paralelo
+// 4. Contar repositorios por lenguaje y pintar el resumen
+function mostrarLenguajes(lista) {
+    const conteo = {};
+    lista.forEach(r => {
+        const lenguaje = r.language ?? 'sin lenguaje';
+        conteo[lenguaje] = (conteo[lenguaje] ?? 0) + 1;
+    });
+
+    // De mayor a menor cantidad de repositorios
+    const ordenado = Object.entries(conteo).sort((a, b) => b[1] - a[1]);
+
+    listaLenguajes.innerHTML = '';
+    ordenado.forEach(([lenguaje, cantidad]) => {
+        const li = document.createElement('li');
+        li.textContent =
+            `${lenguaje}: ${cantidad} ${cantidad === 1 ? 'repositorio' : 'repositorios'}`;
+        listaLenguajes.append(li);
+    });
+    tituloLenguajes.classList.remove('oculto');
+}
+
+// 5. Construir la URL de los 5 repositorios con el orden elegido
+function urlRepos(usuario) {
+    const params = new URLSearchParams({
+        sort: selectOrden.value,
+        per_page: 5
+    });
+    return `${API}/users/${usuario}/repos?${params}`;
+}
+
+// 6. Ocultar todo ante un error
+function limpiarResultados() {
+    perfil.classList.add('oculto');
+    titulo.classList.add('oculto');
+    tituloLenguajes.classList.add('oculto');
+    contenedorOrden.classList.add('oculto');
+    repos.innerHTML = '';
+    listaLenguajes.innerHTML = '';
+}
+
+// 7. Evento submit: tres peticiones en paralelo
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const usuario = encodeURIComponent(input.value.trim());
     if (!usuario) return;
 
-    const params = new URLSearchParams({ sort: 'updated', per_page: 5 });
+    // Hasta 100 repositorios (máximo permitido) para el resumen de lenguajes
+    const paramsTodos = new URLSearchParams({ per_page: 100 });
+
     boton.disabled = true;
     estado.className = '';
     estado.textContent = 'Buscando...';
 
     try {
-        const [datosUsuario, datosRepos] = await Promise.all([
+        const [datosUsuario, datosRepos, todosRepos] = await Promise.all([
             obtenerJSON(`${API}/users/${usuario}`),
-            obtenerJSON(`${API}/users/${usuario}/repos?${params}`)
+            obtenerJSON(urlRepos(usuario)),
+            obtenerJSON(`${API}/users/${usuario}/repos?${paramsTodos}`)
         ]);
+        usuarioActual = usuario;
         mostrarPerfil(datosUsuario);
+        mostrarLenguajes(todosRepos);
         mostrarRepos(datosRepos);
         estado.textContent = '';
     } catch (error) {
-        perfil.classList.add('oculto');
-        titulo.classList.add('oculto');
-        repos.innerHTML = '';
+        usuarioActual = null;
+        limpiarResultados();
         estado.className = 'error';
         estado.textContent = error.message;
     } finally {
         boton.disabled = false;
+    }
+});
+
+// 8. Cambiar el orden: solo se vuelve a pedir la lista de 5 repositorios
+selectOrden.addEventListener('change', async () => {
+    if (!usuarioActual) return;
+
+    selectOrden.disabled = true;
+    estado.className = '';
+    estado.textContent = 'Ordenando...';
+
+    try {
+        const datosRepos = await obtenerJSON(urlRepos(usuarioActual));
+        mostrarRepos(datosRepos);
+        estado.textContent = '';
+    } catch (error) {
+        estado.className = 'error';
+        estado.textContent = error.message;
+    } finally {
+        selectOrden.disabled = false;
     }
 });
